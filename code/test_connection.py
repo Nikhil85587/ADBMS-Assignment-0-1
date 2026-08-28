@@ -1,6 +1,6 @@
 import psycopg2
 
-connection = {
+DB_CONFIG = {
     "host": "localhost",
     "port": 5432,
     "database": "YOUR_DATABASE_NAME",
@@ -10,4 +10,4 @@ connection = {
 
 print("Connected to PostgreSQL successfully!")
 
-connection.close()
+DB_CONFIG.close()
