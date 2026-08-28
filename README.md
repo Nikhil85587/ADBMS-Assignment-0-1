@@ -35,8 +35,10 @@ The experiment covers:
 ```text
 Assignment-1/
 │
-├── ADBMS_Assignment_0.pdf
-├── ADBMS_Assignment_1.pdf
+├── main.tex
+├── run.bat
+├── q1_id_histogram.png
+├── q1_title_histogram.png
 │
 ├── code/
 │   ├── histogram.py
@@ -46,12 +48,9 @@ Assignment-1/
     └── ...
 ```
 
-### `ADBMS_Assignment_0.pdf`
+### `main.tex`
 
-Contains the complete assignment-0 report.
-### `ADBMS_Assignment_1.pdf`
-
-Contains the complete assignment-1 report.
+Contains the complete assignment report.
 
 ### `code/histogram.py`
 
@@ -100,8 +99,25 @@ numpy
 Install them using:
 
 ```bash
-pip install psycopg2-binary pandas matplotlib numpy
+pip install requirements.txt
 ```
+
+---
+
+## Quick Start (Windows)
+
+A `run.bat` script is included to automate the full pipeline in one
+step. After configuring `DB_CONFIG` (see below), simply run:
+
+```bash
+run.bat
+```
+
+This executes `q1_plots.py` and `histogram.py` in sequence and
+generates all plots and results needed for the report. Running
+`run.bat` is the recommended way to complete the whole process
+end-to-end; the manual step-by-step instructions below are provided
+for reference or for non-Windows environments.
 
 ---
 
@@ -139,6 +155,11 @@ DB_CONFIG = {
 
 Replace these values with the PostgreSQL configuration used on the
 experimental machine.
+
+> **Important:** `DB_CONFIG` must be updated in **every** Python file
+> (`code/histogram.py` and `code/q1_plots.py`) before running the
+> experiment. Each script connects independently, so the values are
+> not shared automatically.
 
 ---
 
@@ -447,20 +468,30 @@ To reproduce the experiment:
 2. Import the Join Order Benchmark (2013 Snapshot).
 3. Verify that the `title` table contains 2,528,312 rows.
 4. Install the required Python packages.
-5. Configure the PostgreSQL connection parameters.
-6. Run:
+5. Update `DB_CONFIG` in **all** Python files
+   (`code/histogram.py` and `code/q1_plots.py`).
+6. Run `run.bat` to execute the full pipeline automatically, **or**
+   run the scripts manually:
 
 ```bash
 python q1_plots.py
 ```
 
-7. Run:
-
 ```bash
 python histogram.py
 ```
 
-8. Check the generated files in the `results` directory.
-
+7. Check the generated files in the `results` directory.
+8. Compile `main.tex`.
 
 ---
+
+## Author
+
+**Name:** Nikhil
+
+**Roll Number:** `[YOUR ROLL NUMBER]`
+
+**Course:** Advanced Database Management Systems
+
+**Assignment:** Assignment 1 - Histogram
