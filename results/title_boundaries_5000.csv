@@ -1,0 +1,21 @@
+bucket,lower_boundary,upper_boundary,frequency
+1,(#1.0),(#1.3),250
+2,(#1.3),(#10.16),250
+3,(#10.16),(#4.145),250
+4,(#4.145),(1995-10-25),250
+5,(1995-10-25),(2005-03-06),250
+6,(2005-03-06),(2011-05-26),250
+7,(2011-05-26),Alternamesse,250
+8,Alternamesse,Brought to You by the Letters GPS,250
+9,Brought to You by the Letters GPS,Departure from the Abbey of the King and Queen,250
+10,Departure from the Abbey of the King and Queen,Faculity Follies: Part 2,250
+11,Faculity Follies: Part 2,Here It Is: The Big Wedding,250
+12,Here It Is: The Big Wedding,Katz's Sortie,250
+13,Katz's Sortie,Mad for the Holidays,250
+14,Mad for the Holidays,Namibia Crossings,250
+15,Namibia Crossings,Peor es nada,250
+16,Peor es nada,Samuel Slater,250
+17,Samuel Slater,Ted Mack & the Original Amateur Hour,250
+18,Ted Mack & the Original Amateur Hour,The Realm,250
+19,The Realm,Two of 16 Voted Off,250
+20,Two of 16 Voted Off,Üzenet,250
