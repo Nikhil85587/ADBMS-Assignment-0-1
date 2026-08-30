@@ -25,7 +25,7 @@ DB_CONFIG = {
     "port": 5432,
     "database": "job",
     "user": "postgres",
-    "password": "nikhil@123456"
+    "password": "YOUR_PASSWORD"
 }
 
 TABLE_NAME = "title"
