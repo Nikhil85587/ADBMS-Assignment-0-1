@@ -1,21 +1,21 @@
-bucket,lower_boundary,upper_boundary,frequency
-1,(#1.0),(#1.3),250
-2,(#1.3),(#10.16),250
-3,(#10.16),(#4.145),250
-4,(#4.145),(1995-10-25),250
-5,(1995-10-25),(2005-03-06),250
-6,(2005-03-06),(2011-05-26),250
-7,(2011-05-26),Alternamesse,250
-8,Alternamesse,Brought to You by the Letters GPS,250
-9,Brought to You by the Letters GPS,Departure from the Abbey of the King and Queen,250
-10,Departure from the Abbey of the King and Queen,Faculity Follies: Part 2,250
-11,Faculity Follies: Part 2,Here It Is: The Big Wedding,250
-12,Here It Is: The Big Wedding,Katz's Sortie,250
-13,Katz's Sortie,Mad for the Holidays,250
-14,Mad for the Holidays,Namibia Crossings,250
-15,Namibia Crossings,Peor es nada,250
-16,Peor es nada,Samuel Slater,250
-17,Samuel Slater,Ted Mack & the Original Amateur Hour,250
-18,Ted Mack & the Original Amateur Hour,The Realm,250
-19,The Realm,Two of 16 Voted Off,250
-20,Two of 16 Voted Off,Üzenet,250
+bucket,lower_boundary,upper_boundary,number_of_values,frequency,average_frequency,variance,bucket_cost
+1,'Bayolente',#1.5: Enter Garnet,8,8.0,1.0,0.0,0.0
+2,(#1.1),(#1.1),1,22.0,22.0,0.0,0.0
+3,(#1.10),(#1.10),1,4.0,4.0,0.0,0.0
+4,(#1.100),(#1.11933),30,35.0,1.1666666666666667,0.20555555555555552,6.166666666666665
+5,(#1.12),(#1.12),1,6.0,6.0,0.0,0.0
+6,(#1.12128),(#1.1988),52,79.0,1.5192307692307692,1.2496301775147924,64.98076923076921
+7,(#1.2),(#1.2),1,19.0,19.0,0.0,0.0
+8,(#1.20),(#1.20),1,6.0,6.0,0.0,0.0
+9,(#1.2014),(#1.297),32,44.0,1.375,0.609375,19.5
+10,(#1.3),(#1.3),1,18.0,18.0,0.0,0.0
+11,(#1.30),(#1.393),22,30.0,1.3636363636363635,0.5950413223140495,13.090909090909088
+12,(#1.4),(#1.4),1,11.0,11.0,0.0,0.0
+13,(#1.40),(#1.49),25,30.0,1.2,0.32,8.0
+14,(#1.5),(#1.5),1,12.0,12.0,0.0,0.0
+15,(#1.50),(#1.5969),16,21.0,1.3125,0.33984375,5.4375
+16,(#1.6),(#1.6),1,14.0,14.0,0.0,0.0
+17,(#1.60),(#1.896),37,53.0,1.4324324324324325,1.921110299488677,71.08108108108105
+18,(#1.9),(#1.9),1,11.0,11.0,0.0,0.0
+19,(#1.905),(#5.7),203,283.0,1.3940886699507389,1.0959256473100536,222.47290640394087
+20,(#5.71),Zwei Frauen,4248,4294.0,1.0108286252354048,0.011182175903759741,47.501883239171384

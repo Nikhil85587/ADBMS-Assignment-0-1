@@ -1,21 +1,21 @@
-bucket,lower_boundary,upper_boundary,frequency
-1,$5 Fixes with Erica Domesek,(#1.29),50
-2,(#1.29),(#13.6),50
-3,(#13.6),(#6.35),50
-4,(#6.35),(1999-03-08),50
-5,(1999-03-08),(2008-08-06),50
-6,(2008-08-06),A Sweet Deal/King of Swing,50
-7,A Sweet Deal/King of Swing,Berlin PolitiX,50
-8,Berlin PolitiX,Cook for Your Life,50
-9,Cook for Your Life,Ein starker Abgang,50
-10,Ein starker Abgang,Historia de un ballet,50
-11,Historia de un ballet,Kabuslar evi - Karanliktan gelen,50
-12,Kabuslar evi - Karanliktan gelen,Les enfants s'amusent,50
-13,Les enfants s'amusent,Meet the Jaffers,50
-14,Meet the Jaffers,P.O.V. 20,50
-15,P.O.V. 20,Rosemary Clooney vs. Shelley Berman,50
-16,Rosemary Clooney vs. Shelley Berman,Spacious Mess,50
-17,Spacious Mess,The Face in the Mirror,50
-18,The Face in the Mirror,The Trojan Biskitt/Snatched from Scratch,50
-19,The Trojan Biskitt/Snatched from Scratch,Unlocking the Past,50
-20,Unlocking the Past,Îshido marû,50
+bucket,lower_boundary,upper_boundary,number_of_values,frequency,average_frequency,variance,bucket_cost
+1,#2.3: The Rescue,"$300,000",3,3.0,1.0,0.0,0.0
+2,(#1.1),(#1.1),1,6.0,6.0,0.0,0.0
+3,(#1.10),(#1.10),1,2.0,2.0,0.0,0.0
+4,(#1.10071),(#1.187),20,21.0,1.05,0.04750000000000001,0.9500000000000002
+5,(#1.2),(#1.2),1,6.0,6.0,0.0,0.0
+6,(#1.22),(#1.27),8,8.0,1.0,0.0,0.0
+7,(#1.3),(#1.3),1,6.0,6.0,0.0,0.0
+8,(#1.31),(#1.31),1,3.0,3.0,0.0,0.0
+9,(#1.37),(#1.48),15,16.0,1.0666666666666667,0.06222222222222224,0.9333333333333336
+10,(#1.5),(#1.5),1,3.0,3.0,0.0,0.0
+11,(#1.5141),(#1.58),6,6.0,1.0,0.0,0.0
+12,(#1.6),(#1.6),1,3.0,3.0,0.0,0.0
+13,(#1.6454),(#1.68),3,3.0,1.0,0.0,0.0
+14,(#1.7),(#1.7),1,4.0,4.0,0.0,0.0
+15,(#1.7006),(#1.78),4,4.0,1.0,0.0,0.0
+16,(#1.8),(#1.8),1,5.0,5.0,0.0,0.0
+17,(#1.82),(#1.8954),3,4.0,1.3333333333333333,0.2222222222222222,0.6666666666666666
+18,(#1.9),(#1.9),1,4.0,4.0,0.0,0.0
+19,(#1.90),(#1.90),1,2.0,2.0,0.0,0.0
+20,(#1.92),Zwischen Himmel und Hölle,886,891.0,1.0056433408577878,0.005611493561750637,4.971783295711064

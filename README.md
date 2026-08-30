@@ -1,419 +1,205 @@
-# Assignment 1 - Histogram
+# ADBMS Assignment 1 — Empirical Investigation of Histograms
 
-## Overview
+## 1. Overview
 
-This assignment studies PostgreSQL histograms and implements a custom
-serial equi-depth histogram using samples from the `title` table of the
-Join Order Benchmark (2013 Snapshot).
+This project implements and evaluates histogram construction techniques for the `title` table in PostgreSQL.
 
 The experiment covers:
 
-- PostgreSQL's built-in histograms for `id` and `title`
-- Custom serial histogram construction
-- Different sample sizes
-- Histogram construction time
-- Selectivity estimation error
-- Full-table time extrapolation
-- Visualization of histograms and experimental results
+* PostgreSQL's built-in histograms using `pg_stats`
+* Optimal serial histograms
+* Sample sizes of **1,000**, **3,000**, and **5,000**
+* **20 histogram buckets**
+* Histogram construction for both:
+
+  * `title.id`
+  * `title.title`
+* Selectivity-error analysis
+* Histogram construction-time analysis
+* Full-table time extrapolation using linear regression
+* Horizontal and vertical histogram visualizations
 
 ---
 
-## Database
-
-**Database:** Join Order Benchmark (2013 Snapshot)
-
-**Main table:** `title`
-
-**Cardinality:** 2,528,312 rows
-
-**PostgreSQL Version:** 18.1
-
----
-
-## Project Structure
+## 2. Directory Structure
 
 ```text
-Assignment-1/
+ADBMS Assignment-1/
 │
-├── main.tex
+├── ADBMS_Assignment_0.pdf
+├── ADBMS_Assignment_1.pdf
+├── README.md
+├── requirements.txt
 ├── run.bat
-├── q1_id_histogram.png
-├── q1_title_histogram.png
 │
 ├── code/
 │   ├── histogram.py
-│   └── q1_plots.py
+│   ├── plot.py
+│   ├── plot_histogram.py
+│   ├── q1_plots.py
+│   └── test_connection.py
 │
 └── results/
-    └── ...
+    ├── experiment_results.csv
+    ├── full_table_extrapolation.csv
+    │
+    ├── id_boundaries_1000.csv
+    ├── id_boundaries_3000.csv
+    ├── id_boundaries_5000.csv
+    ├── id_errors_1000.csv
+    ├── id_errors_3000.csv
+    ├── id_errors_5000.csv
+    │
+    ├── title_boundaries_1000.csv
+    ├── title_boundaries_3000.csv
+    ├── title_boundaries_5000.csv
+    ├── title_errors_1000.csv
+    ├── title_errors_3000.csv
+    ├── title_errors_5000.csv
+    │
+    ├── id_histogram_1000.png
+    ├── id_histogram_3000.png
+    ├── id_histogram_5000.png
+    ├── title_histogram_1000.png
+    ├── title_histogram_3000.png
+    ├── title_histogram_5000.png
+    │
+    ├── q1_id_histogram.png
+    ├── q1_title_histogram.png
+    ├── sample_size_vs_error.png
+    ├── sample_size_vs_time.png
+    │
+    ├── plot_histogram.py
+    │
+    └── vertical_histograms/
+        ├── id_histogram_1000_vertical.png
+        ├── id_histogram_3000_vertical.png
+        ├── id_histogram_5000_vertical.png
+        ├── title_histogram_1000_vertical.png
+        ├── title_histogram_3000_vertical.png
+        └── title_histogram_5000_vertical.png
 ```
-
-### `main.tex`
-
-Contains the complete assignment report.
-
-### `code/histogram.py`
-
-Python implementation for Q2. It:
-
-1. Connects to PostgreSQL.
-2. Samples the `title` table using `TABLESAMPLE`.
-3. Creates serial equi-depth histograms.
-4. Measures histogram construction time.
-5. Calculates maximum selectivity error.
-6. Repeats the experiment for sample sizes 1000, 3000 and 5000.
-7. Performs linear regression for full-table time extrapolation.
-8. Generates result files and plots.
-
-### `code/q1_plots.py`
-
-Extracts PostgreSQL histogram boundaries from `pg_stats` and generates
-the Q1 histogram visualizations for the `id` and `title` columns.
-
-Generated files:
-
-```text
-q1_id_histogram.png
-q1_title_histogram.png
-```
-
-### `results/`
-
-Contains the generated experimental results and plots.
 
 ---
 
-## Requirements
+## 3. Requirements
 
-The experiment was conducted using Python 3.11.
+### Software
 
-Required Python packages:
+* Python 3.x
+* PostgreSQL
+* A PostgreSQL database containing the `title` table
+
+### Python Libraries
+
+The required Python packages are listed in `requirements.txt`:
 
 ```text
-psycopg2-binary
-pandas
-matplotlib
-numpy
+psycopg2-binary==2.9.9
+pandas==2.2.3
+matplotlib==3.10.1
+numpy==2.2.4
 ```
 
 Install them using:
 
 ```bash
-pip install requirements.txt
+pip install -r requirements.txt
 ```
 
 ---
 
-## Quick Start (Windows)
+## 4. Database Configuration
 
-A `run.bat` script is included to automate the full pipeline in one
-step. After configuring `DB_CONFIG` (see below), simply run:
+The Python programs connect to PostgreSQL using the configuration defined near the top of the scripts.
 
-```bash
-run.bat
-```
-
-This executes `q1_plots.py` and `histogram.py` in sequence and
-generates all plots and results needed for the report. Running
-`run.bat` is the recommended way to complete the whole process
-end-to-end; the manual step-by-step instructions below are provided
-for reference or for non-Windows environments.
-
----
-
-## Software Versions
-
-```text
-Python       3.11.9
-PostgreSQL   18.1
-pandas       2.2.3
-matplotlib   3.10.1
-numpy        2.2.4
-psycopg2     2.9.9
-```
-
----
-
-## PostgreSQL Configuration
-
-Before running the programs, PostgreSQL must be running and the Join
-Order Benchmark database must be imported.
-
-The database connection parameters are specified in the Python files.
-
-Example:
+The default configuration is:
 
 ```python
 DB_CONFIG = {
     "host": "localhost",
     "port": 5432,
-    "database": "YOUR_DATABASE_NAME",
-    "user": "YOUR_USERNAME",
+    "database": "job",
+    "user": "postgres",
     "password": "YOUR_PASSWORD"
 }
 ```
 
-Replace these values with the PostgreSQL configuration used on the
-experimental machine.
+Before running the experiment, update the database name, username, and password if necessary.
 
-> **Important:** `DB_CONFIG` must be updated in **every** Python file
-> (`code/histogram.py` and `code/q1_plots.py`) before running the
-> experiment. Each script connects independently, so the values are
-> not shared automatically.
+The database must contain the following table:
+
+```text
+title
+```
+
+with the columns:
+
+```text
+id
+title
+```
+
+### Important
+
+For security, database passwords should not normally be hard-coded in source files. The password shown in the submitted code should be replaced with your own PostgreSQL password before running the experiment on another machine.
 
 ---
 
-# Q1 - PostgreSQL Histograms
+## 5. Running the Complete Experiment
 
-PostgreSQL histogram statistics are obtained from the `pg_stats`
-system view.
-
-The following query was used:
-
-```sql
-SELECT
-    attname,
-    n_distinct,
-    null_frac,
-    most_common_vals,
-    most_common_freqs,
-    histogram_bounds
-FROM pg_stats
-WHERE tablename = 'title'
-  AND attname IN ('id', 'title');
-```
-
-The cardinality of the `title` table was verified using:
-
-```sql
-SELECT COUNT(*) FROM title;
-```
-
-Result:
+The easiest way to run the project on Windows is:
 
 ```text
-2,528,312
+run.bat
 ```
 
-The PostgreSQL histograms contain 101 boundaries, corresponding to
-100 buckets.
+Double-click `run.bat` or execute it from Command Prompt:
 
----
-
-## Generating Q1 Plots
-
-Navigate to the `code` directory:
-
-```bash
-cd code
+```cmd
+run.bat
 ```
 
-Run:
+The script performs the following steps:
 
-```bash
-python q1_plots.py
+### Step 1 — PostgreSQL Histogram Experiment
+
+It runs:
+
+```cmd
+python code\q1_plots.py
 ```
 
-The program generates:
+This reads PostgreSQL's histogram statistics from `pg_stats` and generates:
 
 ```text
-q1_id_histogram.png
-q1_title_histogram.png
+results/q1_id_histogram.png
+results/q1_title_histogram.png
 ```
 
-Move these files to the directory containing `main.tex` if required
-by the LaTeX report.
+### Step 2 — Optimal Serial Histogram Experiment
 
----
+It runs:
 
-# Q2 - Serial Histogram
+```cmd
+python code\histogram.py
+```
 
-A custom serial equi-depth histogram was implemented in Python.
-
-The experiment uses:
+This performs the main histogram experiment using sample sizes:
 
 ```text
-Number of buckets: 20
-Sample sizes:      1000, 3000, 5000
-Columns:           id, title
-Sampling method:   TABLESAMPLE
+1000
+3000
+5000
 ```
 
-The choice of 20 buckets is within the required range of 10--50
-buckets.
-
----
-
-## Running the Experiment
-
-Navigate to the `code` directory:
-
-```bash
-cd code
-```
-
-Run:
-
-```bash
-python histogram.py
-```
-
-For every sample size and column, the program reports:
-
-* Actual sample size
-* Histogram construction time
-* Maximum selectivity error
-* Maximum-error boundary
-
-The program also performs linear regression to extrapolate the
-histogram construction time for the full `title` table.
-
----
-
-## Experimental Results
-
-The final experiment produced the following results:
-
-| Column  | Sample Size | Build Time (seconds) | Maximum Selectivity Error |
-| ------- | ----------- | --------------------- | -------------------------- |
-| `id`    | 1000        | 0.000122              | 0.021839                   |
-| `title` | 1000        | 0.000251              | 0.050015                   |
-| `id`    | 3000        | 0.000374              | 0.045663                   |
-| `title` | 3000        | 0.000583              | 0.050010                   |
-| `id`    | 5000        | 0.001368              | 0.051186                   |
-| `title` | 5000        | 0.001162              | 0.050015                   |
-
----
-
-## Full-Table Time Extrapolation
-
-The `title` table contains:
+and constructs:
 
 ```text
-2,528,312 rows
+20 buckets
 ```
 
-Linear regression was performed using the measured construction times
-for sample sizes 1000, 3000 and 5000.
-
-The extrapolated times are:
-
-| Column  | Extrapolated Time |
-| ------- | ------------------ |
-| `id`    | 0.786625 seconds   |
-| `title` | 0.575489 seconds   |
-
-These values are extrapolated histogram construction times and do not
-represent the time required to scan the complete database.
-
----
-
-## Q1 Selectivity Results
-
-For the query:
-
-```sql
-SELECT *
-FROM title
-WHERE title < 'Race';
-```
-
-PostgreSQL estimated:
-
-```text
-1,917,391 rows
-```
-
-Actual execution returned:
-
-```text
-1,919,892 rows
-```
-
-Therefore:
-
-```text
-Estimated selectivity = 0.758368
-Actual selectivity    = 0.759357
-Absolute error        = 0.000989
-```
-
-For:
-
-```sql
-SELECT *
-FROM title
-WHERE id < 350000;
-```
-
-PostgreSQL estimated:
-
-```text
-340,649 rows
-```
-
-Actual execution returned:
-
-```text
-349,999 rows
-```
-
-Therefore:
-
-```text
-Estimated selectivity = 0.134734
-Actual selectivity    = 0.138432
-Absolute error        = 0.003698
-```
-
----
-
-## Q1 Maximum Selectivity Errors
-
-The maximum selectivity errors calculated over the PostgreSQL
-histogram boundaries were:
-
-| Column  | Maximum Error | Boundary   |
-| ------- | -------------- | ---------- |
-| `id`    | 0.004393       | `314506`   |
-| `title` | 0.064477       | `(#55.74)` |
-
-The error is calculated as:
-
-```text
-Absolute Error =
-|Estimated Selectivity - Actual Selectivity|
-```
-
-For `id`:
-
-```text
-|0.120000 - 0.124393|
-= 0.004393
-```
-
-For `title`:
-
-```text
-|0.080000 - 0.144477|
-= 0.064477
-```
-
----
-
-## Q2 Histogram Configuration
-
-The custom histogram uses 20 buckets.
-
-For the 3000-row sample:
-
-```text
-3000 / 20 = 150
-```
-
-Therefore, each bucket contains approximately 150 sampled tuples.
-
-The histograms are generated separately for:
+for both:
 
 ```text
 id
@@ -422,76 +208,355 @@ title
 
 ---
 
-## Visualizations
+## 6. Description of the Programs
 
-The project contains visualizations for:
+### `code/q1_plots.py`
 
-1. PostgreSQL `id` histogram
-2. PostgreSQL `title` histogram
-3. Custom `id` histograms for different sample sizes
-4. Custom `title` histograms for different sample sizes
-5. Sample size versus construction time
-6. Sample size versus maximum selectivity error
+This program investigates PostgreSQL's built-in histogram statistics.
 
----
+It:
 
-## Effect of Number of Buckets
+1. Connects to PostgreSQL.
+2. Reads statistics from `pg_stats`.
+3. Extracts histogram boundaries for `title.id` and `title.title`.
+4. Determines the number of histogram buckets.
+5. Computes the approximate bucket frequencies.
+6. Generates PostgreSQL histogram plots.
 
-### Fewer Buckets
+Output:
 
-Using fewer buckets:
-
-* Reduces histogram construction and storage overhead.
-* Represents larger ranges of values in each bucket.
-* Provides lower resolution.
-* Can increase selectivity estimation error.
-
-### More Buckets
-
-Using more buckets:
-
-* Provides a finer representation of the data distribution.
-* Can improve selectivity estimation.
-* Requires more processing and storage.
-* May provide limited benefits when the sample size is small.
-
-Thus, the number of buckets represents a trade-off between
-computational cost and estimation accuracy.
-
----
-
-## Reproducibility
-
-To reproduce the experiment:
-
-1. Install PostgreSQL.
-2. Import the Join Order Benchmark (2013 Snapshot).
-3. Verify that the `title` table contains 2,528,312 rows.
-4. Install the required Python packages.
-5. Update `DB_CONFIG` in **all** Python files
-   (`code/histogram.py` and `code/q1_plots.py`).
-6. Run `run.bat` to execute the full pipeline automatically, **or**
-   run the scripts manually:
-
-```bash
-python q1_plots.py
+```text
+results/q1_id_histogram.png
+results/q1_title_histogram.png
 ```
 
-```bash
-python histogram.py
+---
+
+### `code/histogram.py`
+
+This is the main implementation of the optimal serial histogram experiment.
+
+It:
+
+1. Connects to PostgreSQL.
+2. Obtains random samples from the `title` table.
+3. Uses sample sizes of 1,000, 3,000, and 5,000.
+4. Computes frequencies of distinct values.
+5. Constructs an optimal serial histogram.
+6. Uses dynamic programming to minimize:
+
+```text
+SUM(n_i * V_i)
 ```
 
-7. Check the generated files in the `results` directory.
-8. Compile `main.tex`.
+where:
+
+* `n_i` = number of distinct values in bucket `i`
+* `V_i` = variance of frequencies within bucket `i`
+
+7. Computes the maximum selectivity error.
+8. Measures histogram construction time.
+9. Generates histogram plots.
+10. Performs full-table time extrapolation.
 
 ---
 
-## Author
+### `code/plot.py`
 
-**Name:** Nikhil
+This program generates vertical versions of the optimal serial histogram plots.
 
-**Roll Number:** `[YOUR ROLL NUMBER]`
+It reads the CSV files generated by `histogram.py` and creates graphs with:
 
-**Course:** Advanced Database Management Systems
+```text
+X-axis = Value Set / Bucket Boundaries
+Y-axis = Frequency
+```
 
-**Assignment:** Assignment 1 - Histogram
+The generated plots are stored in:
+
+```text
+results/vertical_histograms/
+```
+
+This program does **not** recompute the histograms.
+
+---
+
+### `code/plot_histogram.py`
+
+This program generates horizontal histogram visualizations from the boundary CSV files.
+
+It uses:
+
+```text
+X-axis = Frequency
+Y-axis = Value boundaries
+```
+
+The generated plots are stored in:
+
+```text
+results/
+```
+
+---
+
+### `code/test_connection.py`
+
+This is a small utility intended to test PostgreSQL connectivity.
+
+Update its database configuration before using it.
+
+---
+
+## 7. Histogram Construction
+
+For each sample:
+
+```text
+Sample size = 1000
+Sample size = 3000
+Sample size = 5000
+```
+
+the sampled values are sorted according to PostgreSQL ordering.
+
+The distinct values and their frequencies are then computed.
+
+For example:
+
+```text
+Value     Frequency
+A         5
+B         2
+C         8
+D         4
+...
+```
+
+The optimal serial histogram divides the ordered domain into 20 contiguous buckets.
+
+The objective function minimized is:
+
+```text
+Σ(n_i × V_i)
+```
+
+where `n_i` represents the number of distinct values in bucket `i` and `V_i` represents the variance of their frequencies.
+
+---
+
+## 8. Selectivity Error
+
+The experiment estimates the frequency of values using the average frequency of the bucket to which the value belongs.
+
+For a value with actual frequency `f` and estimated frequency `f̂`, the selectivity error is calculated as:
+
+```text
+|f̂ - f| / sample_size
+```
+
+The maximum error across the sampled values is recorded.
+
+The results are stored in:
+
+```text
+results/id_errors_1000.csv
+results/id_errors_3000.csv
+results/id_errors_5000.csv
+
+results/title_errors_1000.csv
+results/title_errors_3000.csv
+results/title_errors_5000.csv
+```
+
+---
+
+## 9. Output Files
+
+### Boundary CSV Files
+
+These contain the bucket boundaries and statistics of each optimal histogram.
+
+Example:
+
+```text
+id_boundaries_1000.csv
+title_boundaries_1000.csv
+```
+
+Each bucket contains information such as:
+
+```text
+bucket
+lower_boundary
+upper_boundary
+number_of_values
+frequency
+average_frequency
+variance
+bucket_cost
+```
+
+---
+
+### Error CSV Files
+
+These contain the selectivity-error calculations for individual sampled values.
+
+Example:
+
+```text
+id_errors_1000.csv
+title_errors_1000.csv
+```
+
+---
+
+### Experiment Results
+
+```text
+experiment_results.csv
+```
+
+contains the measured results for the different sample sizes and columns, including histogram construction time and maximum selectivity error.
+
+---
+
+### Full-Table Extrapolation
+
+```text
+full_table_extrapolation.csv
+```
+
+contains the estimated time required to construct the histogram using the full table.
+
+The extrapolation is obtained using a linear regression of the form:
+
+```text
+T(n) = slope × n + intercept
+```
+
+---
+
+## 10. Graphs
+
+The project produces several types of graphs.
+
+### PostgreSQL Histograms
+
+```text
+q1_id_histogram.png
+q1_title_histogram.png
+```
+
+These visualize PostgreSQL's histogram statistics obtained from `pg_stats`.
+
+### Optimal Serial Histograms
+
+For each sample size:
+
+```text
+id_histogram_1000.png
+id_histogram_3000.png
+id_histogram_5000.png
+
+title_histogram_1000.png
+title_histogram_3000.png
+title_histogram_5000.png
+```
+
+### Sample Size vs Time
+
+```text
+sample_size_vs_time.png
+```
+
+This compares histogram construction time for different sample sizes.
+
+### Sample Size vs Error
+
+```text
+sample_size_vs_error.png
+```
+
+This compares maximum selectivity error for different sample sizes.
+
+### Vertical Histograms
+
+The alternative vertical visualization is stored in:
+
+```text
+results/vertical_histograms/
+```
+
+---
+
+## 11. Reproducing the Results
+
+To reproduce the experiment from scratch:
+
+### Step 1
+
+Install the required Python packages:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Step 2
+
+Make sure PostgreSQL is running.
+
+### Step 3
+
+Create or connect to the required database and ensure that the `title` table is available.
+
+### Step 4
+
+Update the PostgreSQL connection details in:
+
+```text
+code/q1_plots.py
+code/histogram.py
+```
+
+### Step 5
+
+Run:
+
+```cmd
+run.bat
+```
+
+After successful execution, the generated CSV files and graphs will be available inside:
+
+```text
+results/
+```
+
+---
+
+## 12. Notes
+
+* The experiment uses **20 histogram buckets**.
+* The sample sizes are **1,000, 3,000, and 5,000**.
+* Both `id` and `title` are evaluated.
+* The optimal serial histogram is constructed from the sampled data.
+* Existing CSV files and graphs in `results/` are output artifacts and can be regenerated by running the experiment.
+* The vertical histogram script only changes visualization; it does not change the underlying histogram computation.
+
+---
+
+## 13. Summary
+
+This project provides an empirical investigation of histogram construction by comparing PostgreSQL's built-in histogram statistics with an optimal serial histogram constructed from samples.
+
+The experiment evaluates how:
+
+* sample size affects histogram construction time,
+* sample size affects selectivity error,
+* the distribution of values affects bucket construction,
+* and histogram construction time can be extrapolated to the full table.
+
+All source code is contained in the `code/` directory, while generated experimental results and visualizations are contained in the `results/` directory.
