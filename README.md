@@ -142,11 +142,7 @@ id
 title
 ```
 
-### ⚠️ Security Note
 
-`histogram.py` and `q1_plots.py` currently contain a **real, hard-coded PostgreSQL password** rather than a placeholder. Before sharing, submitting, or pushing this project anywhere public (e.g. GitHub), replace the password with a placeholder such as `YOUR_PASSWORD` and change the actual database password if it was ever exposed.
-
----
 
 ## 5. Running the Complete Experiment
 
