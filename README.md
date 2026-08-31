@@ -127,7 +127,7 @@ DB_CONFIG = {
 }
 ```
 
-Before running the experiment, update the database name, username, and password in all three files if necessary.
+Before running the experiment, update the database name, username, and password in code\histogram.py, code\q1_plots.py, code\test_connection.py.
 
 The database must contain the following table:
 
