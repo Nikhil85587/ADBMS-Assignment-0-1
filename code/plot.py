@@ -1,7 +1,7 @@
 """
 q2_vertical_plots.py
 
-Generates vertical versions of the optimal serial histogram graphs
+Generates horizontal/exchanged-axes versions of the optimal serial histogram graphs
 from the CSV files produced by histogram.py.
 
 It reads:
@@ -14,11 +14,11 @@ It reads:
 
 It does NOT recompute the histogram. It only changes the visualization.
 
-Vertical format:
-    X-axis = Value Set / Bucket Boundaries
-    Y-axis = Frequency
+Exchanged format:
+    X-axis = Frequency
+    Y-axis = Value Set / Bucket Boundaries
 
-For each bucket, the bar height is the bucket's average frequency,
+For each bucket, the bar length is the bucket's average frequency,
 which is the same quantity used by histogram.py for selectivity
 estimation.
 """
@@ -108,7 +108,7 @@ def read_histogram(column, sample_size):
 
 
 # ============================================================
-# VERTICAL HISTOGRAM
+# HISTOGRAM WITH EXCHANGED AXES
 # ============================================================
 
 def plot_vertical_histogram(column, sample_size):
@@ -122,57 +122,57 @@ def plot_vertical_histogram(column, sample_size):
     frequencies = df["average_frequency"].astype(float)
     value_set_sizes = df["number_of_values"].astype(int)
 
-    # Wider figure for the 20 bucket labels.
-    fig, ax = plt.subplots(figsize=(15, 8))
+    fig, ax = plt.subplots(figsize=(12, 10))
 
     positions = range(len(df))
 
     # --------------------------------------------------------
-    # Vertical bars
+    # Horizontal bars (Exchanged Axes)
     #
-    # X = value-set / bucket boundary
-    # Y = average frequency
+    # X = average frequency
+    # Y = value-set / bucket boundary
     # --------------------------------------------------------
 
-    ax.bar(
+    ax.barh(
         positions,
         frequencies,
-        width=0.8
+        height=0.8
     )
 
-    ax.set_xlabel("Value Set / Bucket Boundaries")
-    ax.set_ylabel("Frequency")
+    ax.set_xlabel("Frequency")
+    ax.set_ylabel("Value Set / Bucket Boundaries")
 
     ax.set_title(
         f"Optimal Serial Histogram - {column} "
         f"({sample_size} samples, {len(df)} buckets)"
     )
 
-    ax.set_xticks(list(positions))
+    ax.set_yticks(list(positions))
 
-    # Include n_i in the label so the value-set size is visible.
+    # Include n_i in the Y-axis label so the value-set size remains visible.
     tick_labels = [
-        f"{label}\n(n={n})"
+        f"{label} (n={n})"
         for label, n in zip(labels, value_set_sizes)
     ]
 
-    ax.set_xticklabels(
+    ax.set_yticklabels(
         tick_labels,
-        rotation=60,
-        ha="right",
         fontsize=8
     )
 
+    # Invert Y-axis so the first bucket stays at the top
+    ax.invert_yaxis()
+
     ax.grid(
-        axis="y",
+        axis="x",
         alpha=0.25
     )
 
     plt.subplots_adjust(
-        left=0.08,
-        right=0.98,
-        top=0.90,
-        bottom=0.34
+        left=0.25,
+        right=0.95,
+        top=0.92,
+        bottom=0.08
     )
 
     output_file = os.path.join(
@@ -198,7 +198,7 @@ def plot_vertical_histogram(column, sample_size):
 def main():
 
     print("=" * 70)
-    print("Assignment 1 - Vertical Optimal Serial Histograms")
+    print("Assignment 1 - Optimal Serial Histograms (Exchanged Axes)")
     print("=" * 70)
 
     print()
@@ -217,7 +217,7 @@ def main():
 
     print()
     print("=" * 70)
-    print("ALL VERTICAL HISTOGRAMS GENERATED SUCCESSFULLY")
+    print("ALL HISTOGRAMS GENERATED SUCCESSFULLY")
     print("=" * 70)
 
     print()

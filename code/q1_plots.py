@@ -23,8 +23,8 @@ import matplotlib.pyplot as plt
 DB_CONFIG = {
     "host": "localhost",
     "port": 5432,
-    "database": "job",
-    "user": "postgres",
+    "database": "YOUR_DATABASE_NAME",
+    "user": "YOUR_USERNAME",
     "password": "YOUR_PASSWORD"
 }
 
