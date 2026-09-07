@@ -1,0 +1,2 @@
+column,target_sample_size,distinct_target,raw_rows_sampled,distinct_values_used
+id,5000,5000,5000,5000

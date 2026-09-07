@@ -61,10 +61,18 @@ def make_bucket_label(row):
     lower = format_value(row["lower_boundary"])
     upper = format_value(row["upper_boundary"])
 
+    # NOTE: "number_of_values" is the count of DISTINCT domain values
+    # (e.g. distinct titles) in this bucket, NOT the number of rows.
+    # Labelling it "n_distinct" avoids it being misread as a row count,
+    # since for skewed columns like "title" this can legitimately
+    # exceed the nominal sample size (see the plot subtitle).
     if lower == upper:
-        return lower
+        return f"{lower} (n_distinct={int(row['number_of_values'])})"
 
-    return f"{lower} | {upper}"
+    return (
+        f"{lower} \u2026 {upper} "
+        f"(n_distinct={int(row['number_of_values'])})"
+    )
 
 
 # ============================================================
@@ -108,8 +116,18 @@ def read_histogram(column, sample_size):
 
 
 # ============================================================
-# HISTOGRAM WITH EXCHANGED AXES
+# HISTOGRAM WITH VERTICAL BARS (TARGET STYLE)
 # ============================================================
+
+# Two alternating bar heights so that labels on adjacent (narrow)
+# bars don't collide with each other.
+BAR_HEIGHT_TALL = 1.00
+BAR_HEIGHT_SHORT = 0.84
+
+# Default matplotlib color cycle, reused/repeated across buckets so
+# consecutive bars are visually distinct.
+COLOR_CYCLE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
 
 def plot_vertical_histogram(column, sample_size):
     df = read_histogram(column, sample_size)
@@ -119,61 +137,111 @@ def plot_vertical_histogram(column, sample_size):
         for _, row in df.iterrows()
     ]
 
-    frequencies = df["average_frequency"].astype(float)
-    value_set_sizes = df["number_of_values"].astype(int)
+    value_set_sizes = df["number_of_values"].astype(float).tolist()
 
-    fig, ax = plt.subplots(figsize=(12, 10))
-
-    positions = range(len(df))
+    n_buckets = len(df)
 
     # --------------------------------------------------------
-    # Horizontal bars (Exchanged Axes)
-    #
-    # X = average frequency
-    # Y = value-set / bucket boundary
+    # Each bucket becomes one bar whose WIDTH is its number of
+    # distinct values (value-set size). Bars are placed side by
+    # side, left to right, in bucket order, so the X-axis is the
+    # cumulative count of distinct values covered so far - this
+    # reproduces the "Frequencies" axis look from the target image.
     # --------------------------------------------------------
 
-    ax.barh(
-        positions,
-        frequencies,
-        height=0.8
-    )
+    lefts = []
+    cumulative = 0.0
 
-    ax.set_xlabel("Frequency")
-    ax.set_ylabel("Value Set / Bucket Boundaries")
+    for n in value_set_sizes:
+        lefts.append(cumulative)
+        cumulative += n
 
-    ax.set_title(
-        f"Optimal Serial Histogram - {column} "
-        f"({sample_size} samples, {len(df)} buckets)"
-    )
+    total_width = cumulative
 
-    ax.set_yticks(list(positions))
-
-    # Include n_i in the Y-axis label so the value-set size remains visible.
-    tick_labels = [
-        f"{label} (n={n})"
-        for label, n in zip(labels, value_set_sizes)
+    # Alternate bar heights so adjacent vertical labels stay legible
+    heights = [
+        BAR_HEIGHT_TALL if i % 2 == 0 else BAR_HEIGHT_SHORT
+        for i in range(n_buckets)
     ]
 
-    ax.set_yticklabels(
-        tick_labels,
-        fontsize=8
+    colors = [
+        COLOR_CYCLE[i % len(COLOR_CYCLE)]
+        for i in range(n_buckets)
+    ]
+
+    fig, ax = plt.subplots(figsize=(24, 10))
+
+    ax.bar(
+        lefts,
+        heights,
+        width=value_set_sizes,
+        align="edge",
+        color=colors,
+        edgecolor="none"
     )
 
-    # Invert Y-axis so the first bucket stays at the top
-    ax.invert_yaxis()
+    # --------------------------------------------------------
+    # Vertical bucket-boundary labels centered inside each bar
+    # --------------------------------------------------------
 
-    ax.grid(
-        axis="x",
-        alpha=0.25
+    for left, width, height, label in zip(
+        lefts, value_set_sizes, heights, labels
+    ):
+        ax.text(
+            left + width / 2,
+            height / 2,
+            label,
+            rotation=90,
+            ha="center",
+            va="center",
+            fontsize=9
+        )
+
+    ax.set_xlim(0, total_width)
+    ax.set_ylim(0, BAR_HEIGHT_TALL * 1.15)
+
+    ax.set_xlabel("Frequencies", fontsize=12)
+    ax.set_ylabel("Value Set", fontsize=12)
+
+    # No meaningful scale on the Y-axis - bar height only alternates
+    # for label readability, so hide the tick labels/marks.
+    ax.set_yticks([])
+
+    # --------------------------------------------------------
+    # Build an accurate subtitle.
+    #
+    # For "id" these numbers always equal sample_size exactly
+    # (id is the primary key: no duplicates).
+    #
+    # For "title", histogram.py grows the raw row count until at
+    # least `sample_size` DISTINCT titles are found, so the actual
+    # distinct-value / raw-row totals can be larger than the
+    # nominal sample_size. Showing both avoids the plot title being
+    # misread as "N rows were sampled".
+    # --------------------------------------------------------
+
+    actual_distinct_total = int(df["number_of_values"].sum())
+    actual_row_total = int(df["frequency"].sum())
+
+    if actual_distinct_total == sample_size and actual_row_total == sample_size:
+        subtitle = f"{sample_size} samples, {n_buckets} buckets"
+    else:
+        subtitle = (
+            f"target \u2265{sample_size} distinct values, "
+            f"{actual_distinct_total} distinct values used, "
+            f"{actual_row_total} raw rows sampled, "
+            f"{n_buckets} buckets"
+        )
+
+    ax.set_title(
+        f"Optimal Serial Histogram - {column} ({subtitle})",
+        fontsize=14
     )
 
-    plt.subplots_adjust(
-        left=0.25,
-        right=0.95,
-        top=0.92,
-        bottom=0.08
-    )
+    for spine in ["top", "right", "left"]:
+        ax.spines[spine].set_visible(False)
+
+    plt.tight_layout()
 
     output_file = os.path.join(
         OUTPUT_DIR,

@@ -94,6 +94,11 @@ def plot_histogram(column, sample_size):
 
     frequencies = df["frequency"].tolist()
 
+    # Compute real values instead of assuming fixed numbers, so the
+    # title stays correct if BUCKETS or the sample size changes.
+    n_buckets = len(df)
+    actual_rows_total = int(df["frequency"].sum())
+
     # --------------------------------------------------------
     # Figure size
     # --------------------------------------------------------
@@ -125,9 +130,24 @@ def plot_histogram(column, sample_size):
         fontsize=12
     )
 
+    # This code builds a V-optimal (minimum-variance) serial
+    # histogram - i.e. it minimizes n_i * variance(frequencies) per
+    # bucket - NOT an equi-depth histogram (equal row count per
+    # bucket). Labelling it "Equi-Depth" was inaccurate; corrected
+    # below. actual_rows_total is shown because, for "title", the
+    # raw rows sampled can exceed the nominal sample_size (see
+    # histogram.py's distinct-value expansion logic).
+    if actual_rows_total == sample_size:
+        size_label = f"{sample_size} samples"
+    else:
+        size_label = (
+            f"target {sample_size} samples, "
+            f"{actual_rows_total} raw rows used"
+        )
+
     plt.title(
-        f"Serial Equi-Depth Histogram: "
-        f"{column} ({sample_size} samples, 20 buckets)",
+        f"Optimal (V-Optimal / Minimum-Variance) Serial Histogram: "
+        f"{column} ({size_label}, {n_buckets} buckets)",
         fontsize=14
     )
 

@@ -1,0 +1,4 @@
+trial,sample_size,raw_rows_sampled,distinct_values,buckets,build_time_seconds,optimal_objective,max_selectivity_error,max_error_query_value
+1,5000,5000,5000,20,1.816710100043565,0.0,0.0,545
+2,5000,5000,5000,20,2.035130300093442,0.0,0.0,492
+3,5000,5000,5000,20,2.266990600153804,0.0,0.0,632

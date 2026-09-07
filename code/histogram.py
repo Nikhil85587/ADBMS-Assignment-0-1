@@ -1,7 +1,5 @@
 import os
 import time
-from bisect import bisect_left, bisect_right
-
 import numpy as np
 import pandas as pd
 import psycopg2
@@ -25,8 +23,31 @@ TABLE_NAME = "title"
 # Number of histogram buckets requested by the assignment
 BUCKETS = 20
 
+# The same Optimal Serial Histogram algorithm is used for both columns.
+# For id, all frequencies are 1, so every partition has zero serial
+# objective. The DP therefore uses an equal-depth tie-breaker to choose
+# balanced buckets. For title, varying frequencies make the minimum-cost
+# serial partition determine the bucket boundaries.
+
 # Sample sizes required for the experiment
 SAMPLE_SIZES = [1000, 3000, 5000]
+
+# Number of independent trials (fresh random sample each time) to run
+# per sample size. Build time and max selectivity error are averaged
+# over these trials, since TABLESAMPLE + ORDER BY random() produces a
+# different sample (and therefore a different histogram/error) on
+# every run.
+NUM_TRIALS = 3
+
+# When expanding the raw title sample to reach the required number of
+# distinct title values, grow the raw row count by this factor each
+# retry.
+TITLE_SAMPLE_GROWTH_FACTOR = 1.5
+
+# Safety cap: never draw more than this multiple of the target
+# distinct count when growing the title sample (avoids an infinite
+# loop if the table simply does not contain enough distinct titles).
+TITLE_SAMPLE_MAX_MULTIPLIER = 25
 
 # Known full-table cardinality
 FULL_TABLE_CARDINALITY = 2_528_312
@@ -109,7 +130,23 @@ def get_sample(conn, column, sample_size):
         values = [row[0] for row in rows]
 
         if len(values) >= sample_size:
-            return values[:sample_size]
+            values = values[:sample_size]
+
+            # ---- Row check -------------------------------------
+            # Confirm the number of rows actually fetched matches
+            # the number of rows requested before returning.
+            assert len(values) == sample_size, (
+                f"Row check failed for column '{column}': "
+                f"requested {sample_size} rows, "
+                f"got {len(values)}."
+            )
+
+            print(
+                f"  [row check] {column}: requested={sample_size}, "
+                f"fetched={len(values)} -> OK"
+            )
+
+            return values
 
         percentage *= 2.0
 
@@ -137,7 +174,132 @@ def get_sample(conn, column, sample_size):
             f"Could not obtain {sample_size} rows."
         )
 
+    values = values[:sample_size]
+
+    # ---- Row check -------------------------------------------
+    assert len(values) == sample_size, (
+        f"Row check failed for column '{column}' (fallback path): "
+        f"requested {sample_size} rows, got {len(values)}."
+    )
+
+    print(
+        f"  [row check] {column}: requested={sample_size}, "
+        f"fetched={len(values)} -> OK (fallback path)"
+    )
+
     return values
+
+
+# ============================================================
+# TITLE SAMPLE
+# ============================================================
+
+def get_title_sample_with_distinct_target(conn, target_distinct):
+    """
+    Obtain a title sample containing exactly target_distinct DISTINCT
+    title values. Duplicate rows are retained because their frequencies
+    are required by the serial histogram.
+
+    The nominal sample size for title therefore means the number of
+    DISTINCT titles, not the number of raw rows. We repeatedly draw a
+    larger random raw sample until it contains at least the requested
+    number of distinct titles. If the candidate contains more than the
+    target, exactly target_distinct title values are selected at random
+    and all sampled duplicate rows belonging to those selected values
+    are retained.
+
+    Returns:
+        values          - sorted raw sample, duplicates included
+        raw_rows_drawn  - number of raw rows retained
+        distinct_count  - exactly target_distinct
+    """
+
+    if target_distinct <= 0:
+        raise ValueError("target_distinct must be positive.")
+
+    raw_target = max(
+        target_distinct,
+        int(np.ceil(target_distinct * TITLE_SAMPLE_GROWTH_FACTOR))
+    )
+
+    max_raw_rows = int(
+        target_distinct * TITLE_SAMPLE_MAX_MULTIPLIER
+    )
+
+    while raw_target <= max_raw_rows:
+
+        candidate = get_sample(
+            conn,
+            "title",
+            raw_target
+        )
+
+        candidate_distinct = list(dict.fromkeys(candidate))
+
+        if len(candidate_distinct) < target_distinct:
+            print(
+                f"  [title distinct-check] candidate_raw_rows="
+                f"{len(candidate)}, distinct_titles="
+                f"{len(candidate_distinct)} < target={target_distinct}; "
+                f"expanding raw sample."
+            )
+
+            raw_target = int(
+                np.ceil(raw_target * TITLE_SAMPLE_GROWTH_FACTOR)
+            )
+            continue
+
+        # The candidate contains enough distinct titles. Select exactly
+        # target_distinct unique titles, then retain every occurrence of
+        # those selected titles in the candidate. This preserves duplicate
+        # frequencies while making the distinct count exact.
+        if len(candidate_distinct) == target_distinct:
+            selected_titles = set(candidate_distinct)
+        else:
+            selected_titles = set(
+                np.random.choice(
+                    np.asarray(candidate_distinct, dtype=object),
+                    size=target_distinct,
+                    replace=False
+                ).tolist()
+            )
+
+        values = [
+            value
+            for value in candidate
+            if value in selected_titles
+        ]
+
+        # candidate is already sorted according to PostgreSQL's ordering,
+        # so filtering it preserves the database collation order.
+        distinct_count = len(set(values))
+
+        print(
+            f"  [title distinct-check] target_distinct="
+            f"{target_distinct}, raw_rows={len(values)}, "
+            f"distinct_titles={distinct_count} -> OK"
+        )
+
+        # This is the correct check for the title experiment: the target
+        # refers to DISTINCT values, while raw_rows may be larger because
+        # duplicate title occurrences are intentionally retained.
+        assert distinct_count == target_distinct, (
+            f"Distinct-value check failed for 'title': expected "
+            f"{target_distinct} distinct titles, got {distinct_count}."
+        )
+
+        assert len(values) >= target_distinct, (
+            f"Raw-row check failed for 'title': need at least "
+            f"{target_distinct} rows to contain {target_distinct} "
+            f"distinct titles, got {len(values)}."
+        )
+
+        return values, len(values), distinct_count
+
+    raise RuntimeError(
+        f"Could not obtain {target_distinct} distinct title values "
+        f"within the {TITLE_SAMPLE_MAX_MULTIPLIER}x raw-row safety cap."
+    )
 
 
 # ============================================================
@@ -294,6 +456,7 @@ def build_optimal_serial_histogram(values, requested_buckets):
 
         best_cost = INF
         best_split = -1
+        best_balance = INF
 
         start_min = max(
             bucket_number - 1,
@@ -325,9 +488,28 @@ def build_optimal_serial_histogram(values, requested_buckets):
                 + cost
             )
 
-            if candidate < best_cost:
+            # Primary criterion: minimize the optimal serial
+            # histogram objective SUM(n_i * V_i).
+            #
+            # Secondary criterion: if multiple partitions have the
+            # same minimum objective, prefer a bucket size close to
+            # the ideal equal-depth size m / requested_buckets.
+            # This matters especially for id, where every frequency
+            # is 1 and every valid partition has objective 0.
+            bucket_size = mid - start
+            ideal_size = m / buckets
+            balance = abs(bucket_size - ideal_size)
+
+            if (
+                candidate < best_cost - 1e-12
+                or (
+                    abs(candidate - best_cost) <= 1e-12
+                    and balance < best_balance
+                )
+            ):
                 best_cost = candidate
                 best_split = start
+                best_balance = balance
 
         current_dp[mid] = best_cost
 
@@ -654,6 +836,47 @@ def save_histogram(
 
 
 # ============================================================
+# SAVE HISTOGRAM METADATA (sidecar file)
+# ============================================================
+#
+# NOTE: for "id", raw_rows_sampled == distinct_values == sample_size,
+# since id is the primary key.
+#
+# For "title", raw_rows_sampled can be larger than the nominal
+# sample_size because sample_size is the DISTINCT-title target.
+# Duplicate title values are retained because their frequencies are
+# needed by the optimal serial histogram.
+
+def save_histogram_metadata(
+    column,
+    sample_size,
+    raw_rows_sampled,
+    distinct_values,
+    distinct_target=None
+):
+
+    filename = os.path.join(
+        RESULTS_DIR,
+        f"{column}_metadata_{sample_size}.csv"
+    )
+
+    pd.DataFrame([{
+        "column": column,
+        "target_sample_size": sample_size,
+        "distinct_target": (
+            distinct_target
+            if distinct_target is not None
+            else sample_size
+        ),
+        "raw_rows_sampled": raw_rows_sampled,
+        "distinct_values_used": distinct_values,
+    }]).to_csv(
+        filename,
+        index=False
+    )
+
+
+# ============================================================
 # SAVE ERROR RESULTS
 # ============================================================
 
@@ -675,6 +898,28 @@ def save_error_results(
 
 
 # ============================================================
+# SAVE PER-TRIAL DETAIL (BEFORE AVERAGING)
+# ============================================================
+
+def save_trial_summary(column, sample_size, trial_records):
+    """
+    Persist the raw per-trial build_time / max_selectivity_error
+    numbers (one row per trial) before they get averaged, so the
+    averaging is fully auditable.
+    """
+
+    filename = os.path.join(
+        RESULTS_DIR,
+        f"{column}_trials_{sample_size}.csv"
+    )
+
+    pd.DataFrame(trial_records).to_csv(
+        filename,
+        index=False
+    )
+
+
+# ============================================================
 # PLOT OPTIMAL SERIAL HISTOGRAM
 # ============================================================
 
@@ -684,71 +929,44 @@ def plot_histogram(
     histogram
 ):
     """
-    Plot the optimal serial histogram in the lecture format.
+    Plot the optimal serial histogram using vertical bars.
 
-    X-axis:
-        Frequency
-
-    Y-axis:
-        Value set size (number of distinct values per bucket)
-
-    Each bar represents one histogram bucket.
+    X-axis: histogram bucket in sorted value order.
+    Y-axis: average frequency of values in that bucket.
     """
 
-    labels = []
-    average_frequencies = []
-    value_set_sizes = []
+    positions = np.arange(len(histogram))
+    average_frequencies = [
+        bucket["average_frequency"]
+        for bucket in histogram
+    ]
 
-    for bucket in histogram:
+    labels = [
+        f"{bucket['lower_boundary']} | {bucket['upper_boundary']}"
+        for bucket in histogram
+    ]
 
-        labels.append(
-            f"{bucket['lower_boundary']} | "
-            f"{bucket['upper_boundary']}"
-        )
+    plt.figure(figsize=(14, 8))
+    plt.bar(positions, average_frequencies)
 
-        average_frequencies.append(
-            bucket["average_frequency"]
-        )
-
-        value_set_sizes.append(
-            bucket["number_of_values"]
-        )
-
-    positions = np.arange(len(labels))
-
-    plt.figure(figsize=(12, 10))
-
-    # --------------------------------------------------------
-    # Horizontal bars:
-    #
-    # X = frequency
-    # Y = value-set size
-    # --------------------------------------------------------
-
-    plt.barh(
-        positions,
-        average_frequencies
-    )
-
-    plt.yticks(
+    plt.xticks(
         positions,
         [
-            f"{label} "
-            f"(n={size})"
-            for label, size in zip(
-                labels,
-                value_set_sizes
-            )
+            f"B{i+1}\n(n={bucket['number_of_values']})"
+            for i, bucket in enumerate(histogram)
         ],
-        fontsize=7
+        fontsize=8
     )
 
-    plt.xlabel("Frequency")
-    plt.ylabel("Value Set (distinct values per bucket)")
-
+    plt.xlabel("Histogram Bucket (sorted value order)")
+    plt.ylabel("Average Frequency")
     plt.title(
         f"Optimal Serial Histogram - {column} "
-        f"({sample_size} samples, {len(histogram)} buckets)"
+        f"(target={sample_size} distinct titles, {len(histogram)} buckets)"
+        if column == "title"
+        else
+        f"Optimal Serial Histogram - {column} "
+        f"({sample_size} rows sampled, {len(histogram)} buckets)"
     )
 
     plt.tight_layout()
@@ -956,123 +1174,304 @@ def main():
             print("-" * 70)
 
             print(
-                f"Sampling {sample_size} rows..."
-            )
-
-            # ------------------------------------------------
-            # ID SAMPLE
-            # ------------------------------------------------
-
-            id_sample = get_sample(
-                conn,
-                "id",
-                sample_size
-            )
-
-            # ------------------------------------------------
-            # TITLE SAMPLE
-            # ------------------------------------------------
-
-            title_sample = get_sample(
-                conn,
-                "title",
-                sample_size
+                f"Sample size (target): {sample_size}"
             )
 
             print(
-                f"Actual ID sampled rows: "
-                f"{len(id_sample):,}"
+                f"Running {NUM_TRIALS} independent trials "
+                f"(fresh random sample each time) and averaging "
+                f"build time / max selectivity error..."
             )
 
-            print(
-                f"Actual title sampled rows: "
-                f"{len(title_sample):,}"
-            )
+            id_trial_records = []
+            title_trial_records = []
+
+            # Full detail (histogram, errors, domain values) is kept
+            # only for trial 1, which is saved/plotted as the
+            # representative histogram for this sample size.
+            id_trial1_detail = None
+            title_trial1_detail = None
+
+            for trial in range(1, NUM_TRIALS + 1):
+
+                print()
+                print(
+                    f"  >> Trial {trial}/{NUM_TRIALS} "
+                    f"(sample_size={sample_size})"
+                )
+
+                # =========================================
+                # ID SAMPLE (exact row count == sample_size,
+                # since id is the primary key -> no distinct-
+                # value expansion needed)
+                # =========================================
+
+                id_sample = get_sample(
+                    conn,
+                    "id",
+                    sample_size
+                )
+
+                # Row check (point 4)
+                assert len(id_sample) == sample_size, (
+                    f"Row check failed for 'id' trial {trial}: "
+                    f"expected {sample_size}, got {len(id_sample)}"
+                )
+
+                # =========================================
+                # TITLE SAMPLE (expand raw row count until the
+                # sample contains >= title_distinct_target DISTINCT
+                # titles, where title_distinct_target is at least
+                # MIN_TITLE_DISTINCT_TARGET even if the nominal
+                # sample_size for this run is smaller)
+                # =========================================
+
+                title_distinct_target = sample_size
+
+                (
+                    title_sample,
+                    title_raw_rows,
+                    title_distinct_found
+                ) = get_title_sample_with_distinct_target(
+                    conn,
+                    sample_size
+                )
+
+                # Correct title checks: sample_size is the DISTINCT
+                # title target. Raw rows may be larger because duplicate
+                # title occurrences are intentionally retained.
+                assert title_distinct_found == sample_size, (
+                    f"Distinct-value check failed for 'title' trial {trial}: "
+                    f"expected {sample_size} distinct titles, "
+                    f"got {title_distinct_found}"
+                )
+                assert len(title_sample) >= sample_size, (
+                    f"Raw-row check failed for 'title' trial {trial}: "
+                    f"expected at least {sample_size} raw rows, "
+                    f"got {len(title_sample)}"
+                )
+
+                # -----------------------------------------
+                # ID HISTOGRAM
+                # -----------------------------------------
+
+                start_time = time.perf_counter()
+
+                (
+                    id_histogram,
+                    id_objective,
+                    id_domain_values,
+                    id_frequencies
+                ) = build_optimal_serial_histogram(
+                    id_sample,
+                    BUCKETS
+                )
+
+                id_build_time = (
+                    time.perf_counter()
+                    - start_time
+                )
+
+                (
+                    id_error,
+                    id_max_value,
+                    id_errors
+                ) = calculate_max_selectivity_error(
+                    id_histogram,
+                    id_domain_values,
+                    id_frequencies,
+                    len(id_sample)
+                )
+
+                print(
+                    f"     id    : build_time="
+                    f"{id_build_time:.6f}s, "
+                    f"buckets={len(id_histogram)}, "
+                    f"max_sel_error={id_error:.6f}"
+                )
+
+                id_trial_records.append({
+                    "trial": trial,
+                    "sample_size": sample_size,
+                    "raw_rows_sampled": len(id_sample),
+                    "distinct_values": len(id_domain_values),
+                    "buckets": len(id_histogram),
+                    "build_time_seconds": id_build_time,
+                    "optimal_objective": id_objective,
+                    "max_selectivity_error": id_error,
+                    "max_error_query_value": id_max_value
+                })
+
+                if trial == 1:
+                    id_trial1_detail = {
+                        "histogram": id_histogram,
+                        "errors": id_errors
+                    }
+
+                # -----------------------------------------
+                # TITLE HISTOGRAM
+                # -----------------------------------------
+
+                start_time = time.perf_counter()
+
+                (
+                    title_histogram,
+                    title_objective,
+                    title_domain_values,
+                    title_frequencies
+                ) = build_optimal_serial_histogram(
+                    title_sample,
+                    BUCKETS
+                )
+
+                title_build_time = (
+                    time.perf_counter()
+                    - start_time
+                )
+
+                (
+                    title_error,
+                    title_max_value,
+                    title_errors
+                ) = calculate_max_selectivity_error(
+                    title_histogram,
+                    title_domain_values,
+                    title_frequencies,
+                    len(title_sample)
+                )
+
+                print(
+                    f"     title : build_time="
+                    f"{title_build_time:.6f}s, "
+                    f"raw_rows={title_raw_rows}, "
+                    f"distinct={title_distinct_found}, "
+                    f"buckets={len(title_histogram)}, "
+                    f"max_sel_error={title_error:.6f}"
+                )
+
+                title_trial_records.append({
+                    "trial": trial,
+                    "sample_size": sample_size,
+                    "distinct_target": title_distinct_target,
+                    "raw_rows_sampled": len(title_sample),
+                    "distinct_values": len(title_domain_values),
+                    "buckets": len(title_histogram),
+                    "build_time_seconds": title_build_time,
+                    "optimal_objective": title_objective,
+                    "max_selectivity_error": title_error,
+                    "max_error_query_value": title_max_value
+                })
+
+                if trial == 1:
+                    title_trial1_detail = {
+                        "histogram": title_histogram,
+                        "errors": title_errors
+                    }
 
             # =================================================
-            # ID HISTOGRAM
+            # PERSIST PER-TRIAL DETAIL + REPRESENTATIVE HISTOGRAM
+            # (trial 1) FOR THIS SAMPLE SIZE
             # =================================================
 
-            print()
-            print(
-                "Building optimal id histogram..."
+            save_trial_summary(
+                "id", sample_size, id_trial_records
             )
 
-            start_time = time.perf_counter()
-
-            (
-                id_histogram,
-                id_objective,
-                id_domain_values,
-                id_frequencies
-            ) = build_optimal_serial_histogram(
-                id_sample,
-                BUCKETS
-            )
-
-            id_build_time = (
-                time.perf_counter()
-                - start_time
-            )
-
-            print(
-                f"Distinct ID values in sample: "
-                f"{len(id_domain_values):,}"
-            )
-
-            print(
-                f"Actual buckets used: "
-                f"{len(id_histogram)}"
-            )
-
-            print(
-                f"Build time: "
-                f"{id_build_time:.6f} seconds"
-            )
-
-            print(
-                f"Optimal objective "
-                f"(SUM n_i V_i): "
-                f"{id_objective:.6f}"
-            )
-
-            (
-                id_error,
-                id_max_value,
-                id_errors
-            ) = calculate_max_selectivity_error(
-                id_histogram,
-                id_domain_values,
-                id_frequencies,
-                sample_size
-            )
-
-            print(
-                f"Maximum selectivity error: "
-                f"{id_error:.6f}"
-            )
-
-            print(
-                f"Maximum-error query value: "
-                f"{id_max_value}"
+            save_trial_summary(
+                "title", sample_size, title_trial_records
             )
 
             save_histogram(
+                "id", sample_size, id_trial1_detail["histogram"]
+            )
+
+            save_histogram_metadata(
                 "id",
                 sample_size,
-                id_histogram
+                raw_rows_sampled=id_trial_records[0]["raw_rows_sampled"],
+                distinct_values=id_trial_records[0]["distinct_values"]
             )
 
             save_error_results(
-                "id",
-                sample_size,
-                id_errors
+                "id", sample_size, id_trial1_detail["errors"]
             )
 
             plot_histogram(
-                "id",
+                "id", sample_size, id_trial1_detail["histogram"]
+            )
+
+            save_histogram(
+                "title", sample_size, title_trial1_detail["histogram"]
+            )
+
+            save_histogram_metadata(
+                "title",
                 sample_size,
-                id_histogram
+                raw_rows_sampled=title_trial_records[0]["raw_rows_sampled"],
+                distinct_values=title_trial_records[0]["distinct_values"],
+                distinct_target=title_trial_records[0]["distinct_target"]
+            )
+
+            save_error_results(
+                "title", sample_size, title_trial1_detail["errors"]
+            )
+
+            plot_histogram(
+                "title", sample_size, title_trial1_detail["histogram"]
+            )
+
+            # =================================================
+            # AVERAGE OVER THE NUM_TRIALS RUNS
+            # =================================================
+
+            id_trials_df = pd.DataFrame(id_trial_records)
+            title_trials_df = pd.DataFrame(title_trial_records)
+
+            id_avg_build_time = id_trials_df[
+                "build_time_seconds"
+            ].mean()
+
+            id_avg_error = id_trials_df[
+                "max_selectivity_error"
+            ].mean()
+
+            id_avg_objective = id_trials_df[
+                "optimal_objective"
+            ].mean()
+
+            title_avg_build_time = title_trials_df[
+                "build_time_seconds"
+            ].mean()
+
+            title_avg_error = title_trials_df[
+                "max_selectivity_error"
+            ].mean()
+
+            title_avg_objective = title_trials_df[
+                "optimal_objective"
+            ].mean()
+
+            title_avg_raw_rows = title_trials_df[
+                "raw_rows_sampled"
+            ].mean()
+
+            print()
+            print(
+                f"  Averages over {NUM_TRIALS} trials "
+                f"(sample_size={sample_size}):"
+            )
+
+            print(
+                f"     id    : avg_build_time="
+                f"{id_avg_build_time:.6f}s, "
+                f"avg_max_sel_error={id_avg_error:.6f}"
+            )
+
+            print(
+                f"     title : avg_build_time="
+                f"{title_avg_build_time:.6f}s, "
+                f"avg_raw_rows={title_avg_raw_rows:.1f}, "
+                f"avg_max_sel_error={title_avg_error:.6f}"
             )
 
             all_results.append({
@@ -1082,106 +1481,26 @@ def main():
                     sample_size,
 
                 "distinct_values":
-                    len(id_domain_values),
+                    id_trial_records[0]["distinct_values"],
 
                 "buckets":
-                    len(id_histogram),
+                    id_trial_records[0]["buckets"],
 
                 "build_time_seconds":
-                    id_build_time,
+                    id_avg_build_time,
 
                 "optimal_objective":
-                    id_objective,
+                    id_avg_objective,
 
                 "max_selectivity_error":
-                    id_error
+                    id_avg_error,
+
+                "num_trials":
+                    NUM_TRIALS,
+
+                "avg_raw_rows_sampled":
+                    sample_size
             })
-
-            # =================================================
-            # TITLE HISTOGRAM
-            # =================================================
-
-            print()
-            print(
-                "Building optimal title histogram..."
-            )
-
-            start_time = time.perf_counter()
-
-            (
-                title_histogram,
-                title_objective,
-                title_domain_values,
-                title_frequencies
-            ) = build_optimal_serial_histogram(
-                title_sample,
-                BUCKETS
-            )
-
-            title_build_time = (
-                time.perf_counter()
-                - start_time
-            )
-
-            print(
-                f"Distinct title values in sample: "
-                f"{len(title_domain_values):,}"
-            )
-
-            print(
-                f"Actual buckets used: "
-                f"{len(title_histogram)}"
-            )
-
-            print(
-                f"Build time: "
-                f"{title_build_time:.6f} seconds"
-            )
-
-            print(
-                f"Optimal objective "
-                f"(SUM n_i V_i): "
-                f"{title_objective:.6f}"
-            )
-
-            (
-                title_error,
-                title_max_value,
-                title_errors
-            ) = calculate_max_selectivity_error(
-                title_histogram,
-                title_domain_values,
-                title_frequencies,
-                sample_size
-            )
-
-            print(
-                f"Maximum selectivity error: "
-                f"{title_error:.6f}"
-            )
-
-            print(
-                f"Maximum-error query value: "
-                f"{title_max_value}"
-            )
-
-            save_histogram(
-                "title",
-                sample_size,
-                title_histogram
-            )
-
-            save_error_results(
-                "title",
-                sample_size,
-                title_errors
-            )
-
-            plot_histogram(
-                "title",
-                sample_size,
-                title_histogram
-            )
 
             all_results.append({
                 "column": "title",
@@ -1190,19 +1509,25 @@ def main():
                     sample_size,
 
                 "distinct_values":
-                    len(title_domain_values),
+                    title_trial_records[0]["distinct_values"],
 
                 "buckets":
-                    len(title_histogram),
+                    title_trial_records[0]["buckets"],
 
                 "build_time_seconds":
-                    title_build_time,
+                    title_avg_build_time,
 
                 "optimal_objective":
-                    title_objective,
+                    title_avg_objective,
 
                 "max_selectivity_error":
-                    title_error
+                    title_avg_error,
+
+                "num_trials":
+                    NUM_TRIALS,
+
+                "avg_raw_rows_sampled":
+                    title_avg_raw_rows
             })
 
         # ====================================================
@@ -1251,12 +1576,22 @@ def main():
                 results_df["column"] == column
             ]
 
+            # For id, the nominal sample size equals the raw rows processed.
+            # For title, sample_size is the DISTINCT-title target, while
+            # the actual raw workload is larger because duplicate rows are
+            # retained. Therefore regression must use the measured average
+            # raw rows for title.
+            if column == "title":
+                x_values = data["avg_raw_rows_sampled"].values
+            else:
+                x_values = data["sample_size"].values
+
             (
                 slope,
                 intercept,
                 estimated_time
             ) = extrapolate_full_table_time(
-                data["sample_size"].values,
+                x_values,
                 data["build_time_seconds"].values,
                 cardinality
             )
@@ -1265,6 +1600,17 @@ def main():
             print(
                 f"Column: {column}"
             )
+
+            if column == "title":
+                print(
+                    "Regression x-variable: average raw rows processed "
+                    "to obtain the distinct-title target"
+                )
+            else:
+                print(
+                    "Regression x-variable: sample_size "
+                    "(raw rows processed)"
+                )
 
             print(
                 f"Slope: "
