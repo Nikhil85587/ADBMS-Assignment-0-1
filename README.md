@@ -1,4 +1,4 @@
-# ADBMS Assignment 1 — Empirical Investigation of Histograms
+# Empirical Investigation of Histograms
 
 ## 1. Overview
 
