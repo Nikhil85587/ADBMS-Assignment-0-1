@@ -594,35 +594,7 @@ This is particularly important for `title`, where the number of raw sampled rows
 
 ---
 
-## 14. Other Files
-
-### `code/test_connection.py`
-
-Utility program for checking PostgreSQL connectivity.
-
-### `generate_report.py`
-
-Generates the assignment report from `report_source.tex`.
-
-### `report_source.tex`
-
-LaTeX source containing the report content.
-
-### `loop.py`
-
-A separate utility that opens ten text files and continuously writes:
-
-```text
-hello this is nikhil
-```
-
-until `Ctrl+C` is pressed.
-
-It is not part of the histogram experiment.
-
----
-
-## 15. Reproducing the Results
+## 14. Reproducing the Results
 
 1. Install Python 3.x.
 2. Install PostgreSQL and make sure the PostgreSQL server is running.
@@ -678,7 +650,7 @@ time/error plots + full-table extrapolation
 
 ---
 
-## 16. Important Notes
+## 15. Important Notes
 
 - The experiment uses **20 buckets**.
 - Sample sizes are **1,000, 3,000, and 5,000**.
